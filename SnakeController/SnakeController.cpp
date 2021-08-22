@@ -70,43 +70,18 @@ void Controller::receive(std::unique_ptr<Event> e)
 
         Segment const& currentHead = m_segments.front();
 
-        Segment newHead;
-        newHead.x = currentHead.x + ((m_currentDirection & 0b01) ? (m_currentDirection & 0b10) ? 1 : -1 : 0);
-        newHead.y = currentHead.y + (not (m_currentDirection & 0b01) ? (m_currentDirection & 0b10) ? 1 : -1 : 0);
-        newHead.ttl = currentHead.ttl;
+        Segment newHead = createSegment(currentHead);
 
         bool lost = false;
 
-        for (auto segment : m_segments) {
-            if (segment.x == newHead.x and segment.y == newHead.y) {
-                m_scorePort.send(std::make_unique<EventT<LooseInd>>());
-                lost = true;
-                break;
-            }
-        }
+        crash(newHead, &lost);
+        check(newHead, &lost);
 
-        if (not lost) {
-            if (std::make_pair(newHead.x, newHead.y) == m_foodPosition) {
-                m_scorePort.send(std::make_unique<EventT<ScoreInd>>());
-                m_foodPort.send(std::make_unique<EventT<FoodReq>>());
-            } else if (newHead.x < 0 or newHead.y < 0 or
-                       newHead.x >= m_mapDimension.first or
-                       newHead.y >= m_mapDimension.second) {
-                m_scorePort.send(std::make_unique<EventT<LooseInd>>());
-                lost = true;
-            } else {
-                for (auto &segment : m_segments) {
-                    if (not --segment.ttl) {
-                        DisplayInd l_evt;
-                        l_evt.x = segment.x;
-                        l_evt.y = segment.y;
-                        l_evt.value = Cell_FREE;
+        //updateFood(bool *lost, Segment& newHead);
+        //checkMap(bool * lost, Segment& newHead);
+        //alternative(m_segments);
 
-                        m_displayPort.send(std::make_unique<EventT<DisplayInd>>(l_evt));
-                    }
-                }
-            }
-        }
+
 
         if (not lost) {
             m_segments.push_front(newHead);
@@ -190,6 +165,49 @@ void Controller::receive(std::unique_ptr<Event> e)
             }
         }
     }
+}
+
+void Controller::crash(Segment& newHead, bool* lost){
+    for (auto segment : m_segments) {
+        if (segment.x == newHead.x and segment.y == newHead.y) {
+            m_scorePort.send(std::make_unique<EventT<LooseInd>>());
+            *lost = true;
+            break;
+        }
+    }
+}
+
+void Controller::check(Segment& newHead, bool* lost){
+    if (not *lost) {
+        if (std::make_pair(newHead.x, newHead.y) == m_foodPosition) {
+            m_scorePort.send(std::make_unique<EventT<ScoreInd>>());
+            m_foodPort.send(std::make_unique<EventT<FoodReq>>());
+        } else if (newHead.x < 0 or newHead.y < 0 or
+                   newHead.x >= m_mapDimension.first or
+                   newHead.y >= m_mapDimension.second) {
+            m_scorePort.send(std::make_unique<EventT<LooseInd>>());
+            *lost = true;
+        } else {
+            for (auto &segment : m_segments) {
+                if (not --segment.ttl) {
+                    DisplayInd l_evt;
+                    l_evt.x = segment.x;
+                    l_evt.y = segment.y;
+                    l_evt.value = Cell_FREE;
+
+                    m_displayPort.send(std::make_unique<EventT<DisplayInd>>(l_evt));
+                }
+            }
+        }
+    }
+}
+
+Segment Controller::createSegment(Segment const& currentHead) {
+    Segment newHead;
+    newHead.x = currentHead.x + ((m_currentDirection & 0b01) ? (m_currentDirection & 0b10) ? 1 : -1 : 0);
+    newHead.y = currentHead.y + (not (m_currentDirection & 0b01) ? (m_currentDirection & 0b10) ? 1 : -1 : 0);
+    newHead.ttl = currentHead.ttl;
+    return newHead;
 }
 
 } // namespace Snake
